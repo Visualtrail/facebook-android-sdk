@@ -20,6 +20,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
@@ -45,8 +48,6 @@ import android.os.Messenger;
 import android.os.RemoteException;
 import android.text.TextUtils;
 import android.webkit.CookieSyncManager;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 /**
  * Main Facebook object for interacting with the Facebook developer API.
@@ -231,6 +232,47 @@ public class Facebook {
             startDialogAuth(activity, permissions);
         }
     }
+
+	/**
+	 * @param activity
+	 * @param permissions
+	 * @param activityCode
+	 * @param callback
+	 * @param listener
+	 * @deprecated This is not yet working such as custom callbacks
+	 *             isn't supported by facebook oauth
+	 */
+	public void authorize(Activity activity,
+			String[] permissions,
+			int activityCode,
+			String callback,
+			final DialogListener listener)
+	{
+
+		boolean singleSignOnStarted = false;
+
+		mAuthDialogListener = listener;
+
+		// fire off an auto-attribution publish if appropriate.
+		autoPublishAsync(activity.getApplicationContext());
+
+		// Prefer single sign-on, where available.
+		if (activityCode >= 0)
+		{
+			singleSignOnStarted = startSingleSignOn(activity, mAppId,
+					permissions, activityCode);
+		}
+		// Otherwise fall back to traditional dialog.
+		if (!singleSignOnStarted)
+		{
+			Bundle params = new Bundle();
+			if (permissions.length > 0)
+			{
+				params.putString("scope", TextUtils.join(",", permissions));
+			}
+			externalAuth(activity, LOGIN, params, callback, listener);
+		}
+	}
 
     /**
      * Internal method to handle single sign-on backend for authorize().
@@ -839,6 +881,35 @@ public class Facebook {
             new FbDialog(context, url, listener).show();
         }
     }
+
+	private void externalAuth(Context context, String action,
+			Bundle parameters,
+			String redirectUri,
+			final DialogListener listener)
+	{
+
+		String endpoint = DIALOG_BASE_URL + action;
+		parameters.putString("display", "touch");
+		parameters.putString("redirect_uri", redirectUri);
+
+		if (action.equals(LOGIN))
+		{
+			parameters.putString("type", "user_agent");
+			parameters.putString("client_id", mAppId);
+		} else
+		{
+			parameters.putString("app_id", mAppId);
+		}
+
+		if (isSessionValid())
+		{
+			parameters.putString(TOKEN, getAccessToken());
+		}
+		String url = endpoint + "?" + Util.encodeUrl(parameters);
+		Intent browserIntent = new Intent(Intent.ACTION_VIEW,
+				Uri.parse(url));
+		context.startActivity(browserIntent);
+	}
 
     /**
      * @return boolean - whether this object has an non-expired session token
